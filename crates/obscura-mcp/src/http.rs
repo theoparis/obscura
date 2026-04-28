@@ -10,7 +10,12 @@ use crate::{dispatch, BrowserState};
 /// Connections are handled sequentially on the current thread — the browser
 /// session (including the V8 runtime) is single-threaded and `!Send`, so we
 /// never need to move state across threads.
-pub async fn run(port: u16, proxy: Option<String>, user_agent: Option<String>, stealth: bool) -> Result<()> {
+pub async fn run(
+    port: u16,
+    proxy: Option<String>,
+    user_agent: Option<String>,
+    stealth: bool,
+) -> Result<()> {
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
     let listener = TcpListener::bind(&addr).await?;
     tracing::info!("MCP HTTP server on http://127.0.0.1:{}/mcp", port);
@@ -26,10 +31,7 @@ pub async fn run(port: u16, proxy: Option<String>, user_agent: Option<String>, s
     }
 }
 
-async fn handle_connection(
-    stream: tokio::net::TcpStream,
-    state: &mut BrowserState,
-) -> Result<()> {
+async fn handle_connection(stream: tokio::net::TcpStream, state: &mut BrowserState) -> Result<()> {
     let (reader, mut writer) = stream.into_split();
     let mut reader = BufReader::new(reader);
 
@@ -114,7 +116,8 @@ async fn handle_connection(
                 let len = match content_length {
                     Some(n) => n,
                     None => {
-                        respond(&mut writer, 400, b"{\"error\":\"missing Content-Length\"}").await?;
+                        respond(&mut writer, 400, b"{\"error\":\"missing Content-Length\"}")
+                            .await?;
                         break;
                     }
                 };
@@ -144,7 +147,9 @@ async fn handle_connection(
 async fn process_body(body: &[u8], state: &mut BrowserState) -> Value {
     let msg: Value = match serde_json::from_slice(body) {
         Ok(v) => v,
-        Err(_) => return json!({"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"Parse error"}}),
+        Err(_) => {
+            return json!({"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"Parse error"}})
+        }
     };
 
     if let Some(batch) = msg.as_array() {
@@ -157,8 +162,9 @@ async fn process_body(body: &[u8], state: &mut BrowserState) -> Value {
         return Value::Array(results);
     }
 
-    process_one(&msg, state).await
-        .unwrap_or_else(|| json!({"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Invalid Request"}}))
+    process_one(&msg, state).await.unwrap_or_else(
+        || json!({"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Invalid Request"}}),
+    )
 }
 
 async fn process_one(msg: &Value, state: &mut BrowserState) -> Option<Value> {
@@ -185,7 +191,11 @@ async fn respond_json(writer: &mut (impl AsyncWriteExt + Unpin), body: &[u8]) ->
     Ok(())
 }
 
-async fn respond(writer: &mut (impl AsyncWriteExt + Unpin), status: u16, body: &[u8]) -> Result<()> {
+async fn respond(
+    writer: &mut (impl AsyncWriteExt + Unpin),
+    status: u16,
+    body: &[u8],
+) -> Result<()> {
     let status_text = match status {
         400 => "Bad Request",
         404 => "Not Found",

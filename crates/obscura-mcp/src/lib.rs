@@ -37,11 +37,24 @@ struct RpcError {
 
 impl RpcResponse {
     fn ok(id: Value, result: Value) -> Self {
-        RpcResponse { jsonrpc: "2.0", id, result: Some(result), error: None }
+        RpcResponse {
+            jsonrpc: "2.0",
+            id,
+            result: Some(result),
+            error: None,
+        }
     }
 
     fn err(id: Value, code: i32, message: impl Into<String>) -> Self {
-        RpcResponse { jsonrpc: "2.0", id, result: None, error: Some(RpcError { code, message: message.into() }) }
+        RpcResponse {
+            jsonrpc: "2.0",
+            id,
+            result: None,
+            error: Some(RpcError {
+                code,
+                message: message.into(),
+            }),
+        }
     }
 }
 
@@ -56,7 +69,11 @@ impl BrowserState {
     pub fn new(proxy: Option<String>, user_agent: Option<String>, stealth: bool) -> Self {
         BrowserState {
             page: None,
-            context: Arc::new(BrowserContext::with_options("mcp".to_string(), proxy, stealth)),
+            context: Arc::new(BrowserContext::with_options(
+                "mcp".to_string(),
+                proxy,
+                stealth,
+            )),
             user_agent,
             console_messages: Vec::new(),
         }
@@ -70,7 +87,12 @@ impl BrowserState {
     }
 }
 
-pub async fn dispatch(method: &str, id: Value, params: &Value, state: &mut BrowserState) -> RpcResponse {
+pub async fn dispatch(
+    method: &str,
+    id: Value,
+    params: &Value,
+    state: &mut BrowserState,
+) -> RpcResponse {
     match method {
         "initialize" => handle_initialize(id, params),
         "ping" => RpcResponse::ok(id, json!({})),
@@ -124,154 +146,163 @@ pub async fn run(proxy: Option<String>, user_agent: Option<String>, stealth: boo
 }
 
 fn handle_initialize(id: Value, params: &Value) -> RpcResponse {
-    let _client_version = params.get("protocolVersion").and_then(Value::as_str).unwrap_or("");
-    RpcResponse::ok(id, json!({
-        "protocolVersion": "2024-11-05",
-        "capabilities": {
-            "tools": {}
-        },
-        "serverInfo": {
-            "name": "obscura-mcp",
-            "version": env!("CARGO_PKG_VERSION")
-        }
-    }))
+    let _client_version = params
+        .get("protocolVersion")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    RpcResponse::ok(
+        id,
+        json!({
+            "protocolVersion": "2024-11-05",
+            "capabilities": {
+                "tools": {}
+            },
+            "serverInfo": {
+                "name": "obscura-mcp",
+                "version": env!("CARGO_PKG_VERSION")
+            }
+        }),
+    )
 }
 
 fn handle_tools_list(id: Value) -> RpcResponse {
-    RpcResponse::ok(id, json!({
-        "tools": [
-            {
-                "name": "browser_navigate",
-                "description": "Navigate to a URL and wait for the page to load",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "url": { "type": "string", "description": "URL to navigate to" },
-                        "waitUntil": {
-                            "type": "string",
-                            "enum": ["load", "domcontentloaded", "networkidle0"],
-                            "description": "Navigation wait condition (default: load)"
-                        }
-                    },
-                    "required": ["url"]
+    RpcResponse::ok(
+        id,
+        json!({
+            "tools": [
+                {
+                    "name": "browser_navigate",
+                    "description": "Navigate to a URL and wait for the page to load",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "url": { "type": "string", "description": "URL to navigate to" },
+                            "waitUntil": {
+                                "type": "string",
+                                "enum": ["load", "domcontentloaded", "networkidle0"],
+                                "description": "Navigation wait condition (default: load)"
+                            }
+                        },
+                        "required": ["url"]
+                    }
+                },
+                {
+                    "name": "browser_snapshot",
+                    "description": "Get the current page content as text (title, URL, and readable body text)",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                },
+                {
+                    "name": "browser_click",
+                    "description": "Click an element matching the CSS selector",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "selector": { "type": "string", "description": "CSS selector of the element to click" }
+                        },
+                        "required": ["selector"]
+                    }
+                },
+                {
+                    "name": "browser_fill",
+                    "description": "Set the value of an input element",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "selector": { "type": "string", "description": "CSS selector of the input element" },
+                            "value": { "type": "string", "description": "Value to set" }
+                        },
+                        "required": ["selector", "value"]
+                    }
+                },
+                {
+                    "name": "browser_type",
+                    "description": "Type text into an input element (appends to existing value)",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "selector": { "type": "string", "description": "CSS selector of the element" },
+                            "text": { "type": "string", "description": "Text to type" }
+                        },
+                        "required": ["selector", "text"]
+                    }
+                },
+                {
+                    "name": "browser_press_key",
+                    "description": "Dispatch a keyboard event on an element or the document",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "key": { "type": "string", "description": "Key name (e.g. Enter, Tab, Escape)" },
+                            "selector": { "type": "string", "description": "CSS selector (optional, defaults to document)" }
+                        },
+                        "required": ["key"]
+                    }
+                },
+                {
+                    "name": "browser_select_option",
+                    "description": "Select an option from a <select> element",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "selector": { "type": "string", "description": "CSS selector of the <select> element" },
+                            "value": { "type": "string", "description": "Value or text of the option to select" }
+                        },
+                        "required": ["selector", "value"]
+                    }
+                },
+                {
+                    "name": "browser_evaluate",
+                    "description": "Evaluate a JavaScript expression in the page context and return the result",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "expression": { "type": "string", "description": "JavaScript expression to evaluate" }
+                        },
+                        "required": ["expression"]
+                    }
+                },
+                {
+                    "name": "browser_wait_for",
+                    "description": "Wait for a CSS selector to appear in the DOM",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "selector": { "type": "string", "description": "CSS selector to wait for" },
+                            "timeout": { "type": "number", "description": "Timeout in seconds (default: 30)" }
+                        },
+                        "required": ["selector"]
+                    }
+                },
+                {
+                    "name": "browser_network_requests",
+                    "description": "Return the list of network requests made by the current page",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                },
+                {
+                    "name": "browser_console_messages",
+                    "description": "Return the console messages logged by the current page",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                },
+                {
+                    "name": "browser_close",
+                    "description": "Close the current browser page and reset state",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
                 }
-            },
-            {
-                "name": "browser_snapshot",
-                "description": "Get the current page content as text (title, URL, and readable body text)",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {}
-                }
-            },
-            {
-                "name": "browser_click",
-                "description": "Click an element matching the CSS selector",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "selector": { "type": "string", "description": "CSS selector of the element to click" }
-                    },
-                    "required": ["selector"]
-                }
-            },
-            {
-                "name": "browser_fill",
-                "description": "Set the value of an input element",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "selector": { "type": "string", "description": "CSS selector of the input element" },
-                        "value": { "type": "string", "description": "Value to set" }
-                    },
-                    "required": ["selector", "value"]
-                }
-            },
-            {
-                "name": "browser_type",
-                "description": "Type text into an input element (appends to existing value)",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "selector": { "type": "string", "description": "CSS selector of the element" },
-                        "text": { "type": "string", "description": "Text to type" }
-                    },
-                    "required": ["selector", "text"]
-                }
-            },
-            {
-                "name": "browser_press_key",
-                "description": "Dispatch a keyboard event on an element or the document",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "key": { "type": "string", "description": "Key name (e.g. Enter, Tab, Escape)" },
-                        "selector": { "type": "string", "description": "CSS selector (optional, defaults to document)" }
-                    },
-                    "required": ["key"]
-                }
-            },
-            {
-                "name": "browser_select_option",
-                "description": "Select an option from a <select> element",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "selector": { "type": "string", "description": "CSS selector of the <select> element" },
-                        "value": { "type": "string", "description": "Value or text of the option to select" }
-                    },
-                    "required": ["selector", "value"]
-                }
-            },
-            {
-                "name": "browser_evaluate",
-                "description": "Evaluate a JavaScript expression in the page context and return the result",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "expression": { "type": "string", "description": "JavaScript expression to evaluate" }
-                    },
-                    "required": ["expression"]
-                }
-            },
-            {
-                "name": "browser_wait_for",
-                "description": "Wait for a CSS selector to appear in the DOM",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "selector": { "type": "string", "description": "CSS selector to wait for" },
-                        "timeout": { "type": "number", "description": "Timeout in seconds (default: 30)" }
-                    },
-                    "required": ["selector"]
-                }
-            },
-            {
-                "name": "browser_network_requests",
-                "description": "Return the list of network requests made by the current page",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {}
-                }
-            },
-            {
-                "name": "browser_console_messages",
-                "description": "Return the console messages logged by the current page",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {}
-                }
-            },
-            {
-                "name": "browser_close",
-                "description": "Close the current browser page and reset state",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {}
-                }
-            }
-        ]
-    }))
+            ]
+        }),
+    )
 }
 
 async fn handle_tool_call(id: Value, params: &Value, state: &mut BrowserState) -> RpcResponse {
@@ -298,20 +329,31 @@ async fn handle_tool_call(id: Value, params: &Value, state: &mut BrowserState) -
     };
 
     match result {
-        Ok(content) => RpcResponse::ok(id, json!({
-            "content": [{ "type": "text", "text": content }]
-        })),
-        Err(e) => RpcResponse::ok(id, json!({
-            "content": [{ "type": "text", "text": format!("Error: {e}") }],
-            "isError": true
-        })),
+        Ok(content) => RpcResponse::ok(
+            id,
+            json!({
+                "content": [{ "type": "text", "text": content }]
+            }),
+        ),
+        Err(e) => RpcResponse::ok(
+            id,
+            json!({
+                "content": [{ "type": "text", "text": format!("Error: {e}") }],
+                "isError": true
+            }),
+        ),
     }
 }
 
 async fn tool_navigate(args: &Value, state: &mut BrowserState) -> Result<String, String> {
-    let url = args.get("url").and_then(Value::as_str)
+    let url = args
+        .get("url")
+        .and_then(Value::as_str)
         .ok_or("Missing url parameter")?;
-    let wait_until = args.get("waitUntil").and_then(Value::as_str).unwrap_or("load");
+    let wait_until = args
+        .get("waitUntil")
+        .and_then(Value::as_str)
+        .unwrap_or("load");
 
     let condition = obscura_browser::lifecycle::WaitUntil::from_str(wait_until);
     let ua = state.user_agent.clone();
@@ -320,10 +362,15 @@ async fn tool_navigate(args: &Value, state: &mut BrowserState) -> Result<String,
         page.http_client.set_user_agent(ua).await;
     }
 
-    page.navigate_with_wait(url, condition).await
+    page.navigate_with_wait(url, condition)
+        .await
         .map_err(|e| e.to_string())?;
 
-    Ok(format!("Navigated to {} — \"{}\"", page.url_string(), page.title))
+    Ok(format!(
+        "Navigated to {} — \"{}\"",
+        page.url_string(),
+        page.title
+    ))
 }
 
 fn tool_snapshot(state: &mut BrowserState) -> Result<String, String> {
@@ -331,19 +378,26 @@ fn tool_snapshot(state: &mut BrowserState) -> Result<String, String> {
     let url = page.url_string();
     let title = page.title.clone();
 
-    let body_text = page.with_dom(|dom| {
-        if let Ok(Some(body)) = dom.query_selector("body") {
-            extract_text(dom, body)
-        } else {
-            String::new()
-        }
-    }).unwrap_or_default();
+    let body_text = page
+        .with_dom(|dom| {
+            if let Ok(Some(body)) = dom.query_selector("body") {
+                extract_text(dom, body)
+            } else {
+                String::new()
+            }
+        })
+        .unwrap_or_default();
 
-    Ok(format!("URL: {url}\nTitle: {title}\n\n{}", body_text.trim()))
+    Ok(format!(
+        "URL: {url}\nTitle: {title}\n\n{}",
+        body_text.trim()
+    ))
 }
 
 fn tool_click(args: &Value, state: &mut BrowserState) -> Result<String, String> {
-    let selector = args.get("selector").and_then(Value::as_str)
+    let selector = args
+        .get("selector")
+        .and_then(Value::as_str)
         .ok_or("Missing selector parameter")?;
 
     let js = format!(
@@ -365,9 +419,13 @@ fn tool_click(args: &Value, state: &mut BrowserState) -> Result<String, String> 
 }
 
 fn tool_fill(args: &Value, state: &mut BrowserState) -> Result<String, String> {
-    let selector = args.get("selector").and_then(Value::as_str)
+    let selector = args
+        .get("selector")
+        .and_then(Value::as_str)
         .ok_or("Missing selector parameter")?;
-    let value = args.get("value").and_then(Value::as_str)
+    let value = args
+        .get("value")
+        .and_then(Value::as_str)
         .ok_or("Missing value parameter")?;
 
     let js = format!(
@@ -392,9 +450,13 @@ fn tool_fill(args: &Value, state: &mut BrowserState) -> Result<String, String> {
 }
 
 fn tool_type(args: &Value, state: &mut BrowserState) -> Result<String, String> {
-    let selector = args.get("selector").and_then(Value::as_str)
+    let selector = args
+        .get("selector")
+        .and_then(Value::as_str)
         .ok_or("Missing selector parameter")?;
-    let text = args.get("text").and_then(Value::as_str)
+    let text = args
+        .get("text")
+        .and_then(Value::as_str)
         .ok_or("Missing text parameter")?;
 
     let js = format!(
@@ -418,12 +480,17 @@ fn tool_type(args: &Value, state: &mut BrowserState) -> Result<String, String> {
 }
 
 fn tool_press_key(args: &Value, state: &mut BrowserState) -> Result<String, String> {
-    let key = args.get("key").and_then(Value::as_str)
+    let key = args
+        .get("key")
+        .and_then(Value::as_str)
         .ok_or("Missing key parameter")?;
     let selector = args.get("selector").and_then(Value::as_str);
 
     let target = match selector {
-        Some(sel) => format!("document.querySelector({})", serde_json::to_string(sel).unwrap()),
+        Some(sel) => format!(
+            "document.querySelector({})",
+            serde_json::to_string(sel).unwrap()
+        ),
         None => "document".to_string(),
     };
 
@@ -444,9 +511,13 @@ fn tool_press_key(args: &Value, state: &mut BrowserState) -> Result<String, Stri
 }
 
 fn tool_select_option(args: &Value, state: &mut BrowserState) -> Result<String, String> {
-    let selector = args.get("selector").and_then(Value::as_str)
+    let selector = args
+        .get("selector")
+        .and_then(Value::as_str)
         .ok_or("Missing selector parameter")?;
-    let value = args.get("value").and_then(Value::as_str)
+    let value = args
+        .get("value")
+        .and_then(Value::as_str)
         .ok_or("Missing value parameter")?;
 
     let js = format!(
@@ -473,7 +544,9 @@ fn tool_select_option(args: &Value, state: &mut BrowserState) -> Result<String, 
 }
 
 fn tool_evaluate(args: &Value, state: &mut BrowserState) -> Result<String, String> {
-    let expression = args.get("expression").and_then(Value::as_str)
+    let expression = args
+        .get("expression")
+        .and_then(Value::as_str)
         .ok_or("Missing expression parameter")?;
 
     let result = state.page_mut().evaluate(expression);
@@ -485,15 +558,18 @@ fn tool_evaluate(args: &Value, state: &mut BrowserState) -> Result<String, Strin
 }
 
 async fn tool_wait_for(args: &Value, state: &mut BrowserState) -> Result<String, String> {
-    let selector = args.get("selector").and_then(Value::as_str)
+    let selector = args
+        .get("selector")
+        .and_then(Value::as_str)
         .ok_or("Missing selector parameter")?;
     let timeout_secs = args.get("timeout").and_then(Value::as_f64).unwrap_or(30.0) as u64;
 
     let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(timeout_secs);
     loop {
-        let found = state.page_mut().with_dom(|dom| {
-            dom.query_selector(selector).ok().flatten().is_some()
-        }).unwrap_or(false);
+        let found = state
+            .page_mut()
+            .with_dom(|dom| dom.query_selector(selector).ok().flatten().is_some())
+            .unwrap_or(false);
 
         if found {
             return Ok(format!("Found '{selector}'"));
@@ -515,9 +591,10 @@ fn tool_network_requests(state: &mut BrowserState) -> Result<String, String> {
         return Ok("No network requests recorded.".to_string());
     }
 
-    let lines: Vec<String> = events.iter().map(|e| {
-        format!("[{}] {} {} ({}B)", e.status, e.method, e.url, e.body_size)
-    }).collect();
+    let lines: Vec<String> = events
+        .iter()
+        .map(|e| format!("[{}] {} {} ({}B)", e.status, e.method, e.url, e.body_size))
+        .collect();
 
     Ok(lines.join("\n"))
 }
@@ -561,10 +638,30 @@ fn extract_text(dom: &obscura_dom::DomTree, node_id: obscura_dom::NodeId) -> Str
 
             let is_block = matches!(
                 tag,
-                "div" | "p" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6"
-                    | "li" | "tr" | "br" | "hr" | "section" | "article"
-                    | "header" | "footer" | "nav" | "main" | "aside"
-                    | "blockquote" | "pre" | "ul" | "ol" | "table"
+                "div"
+                    | "p"
+                    | "h1"
+                    | "h2"
+                    | "h3"
+                    | "h4"
+                    | "h5"
+                    | "h6"
+                    | "li"
+                    | "tr"
+                    | "br"
+                    | "hr"
+                    | "section"
+                    | "article"
+                    | "header"
+                    | "footer"
+                    | "nav"
+                    | "main"
+                    | "aside"
+                    | "blockquote"
+                    | "pre"
+                    | "ul"
+                    | "ol"
+                    | "table"
             );
 
             if is_block {

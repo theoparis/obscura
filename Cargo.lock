@@ -1682,6 +1682,7 @@ dependencies = [
  "obscura-cdp",
  "obscura-dom",
  "obscura-js",
+ "obscura-mcp",
  "obscura-net",
  "rustls",
  "serde",
@@ -1724,6 +1725,20 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "obscura-mcp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "obscura-browser",
+ "obscura-dom",
+ "obscura-net",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
