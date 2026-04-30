@@ -12,7 +12,8 @@ name = "obscura-worker"
 path = "src/worker.rs"
 
 [features]
-stealth = ["obscura-browser/stealth", "obscura-net/stealth"]
+default = []
+stealth = ["obscura-browser/stealth", "obscura-net/stealth", "obscura-mcp/stealth"]
 
 [dependencies]
 obscura-browser = { workspace = true }
