@@ -260,7 +260,7 @@ pub fn parse_fragment(html: &str) -> DomTree {
 
     let context_name = QualName::new(None, ns!(html), local_name!("body"));
     let tree = DomTree::new();
-    parse_fragment(tree, ParseOpts::default(), context_name, vec![])
+    parse_fragment(tree, ParseOpts::default(), context_name, vec![], true)
         .from_utf8()
         .one(html.as_bytes())
 }

@@ -24,13 +24,13 @@ obscura-cdp = { path = "crates/obscura-cdp" }
 obscura-js = { path = "crates/obscura-js" }
 obscura-mcp = { path = "crates/obscura-mcp" }
 
-html5ever = "0.29"
-markup5ever = "0.14"
-selectors = "0.26"
+html5ever = "0.39"
+markup5ever = "0.39"
+selectors = "0.38"
 servo_arc = "0.4"
-cssparser = "0.34"
+cssparser = "0.37"
 tokio = { version = "1", features = ["full"] }
-tokio-tungstenite = "0.26"
+tokio-tungstenite = "0.29"
 reqwest = { version = "0.13", features = ["cookies", "gzip", "brotli", "deflate", "rustls-no-provider"], default-features = false }
 bssl-rustls-adapters = { git = "https://github.com/google/boringssl", rev = "04aa32f96f3094994a2971d703f7489b75b94f84" }
 bssl-crypto = { git = "https://github.com/google/boringssl", rev = "04aa32f96f3094994a2971d703f7489b75b94f84" }
@@ -45,4 +45,4 @@ thiserror = "2"
 anyhow = "1"
 base64 = "0.22"
 rustls = { version = "0.23", features = ["std"], default-features = false }
-webpki-roots = "0.26"
+webpki-roots = "1.0"

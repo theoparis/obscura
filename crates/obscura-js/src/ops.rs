@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, OnceLock};
 
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use deno_core::op2;
 use deno_core::Extension;
 use deno_core::OpState;
@@ -362,7 +363,7 @@ fn get_shared_client() -> &'static reqwest::Client {
     })
 }
 
-#[op2(async)]
+#[op2(async(lazy), fast)]
 #[string]
 async fn op_fetch_url(
     state: Rc<RefCell<OpState>>,

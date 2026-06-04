@@ -277,7 +277,7 @@ async fn run_multi_worker_serve(
     ja3: Option<String>,
     ja4: Option<String>,
 ) -> anyhow::Result<()> {
-    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+    use tokio::io::AsyncWriteExt as _;
     use tokio::net::TcpListener;
 
     let exe = std::env::current_exe()?;

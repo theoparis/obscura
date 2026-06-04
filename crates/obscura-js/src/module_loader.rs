@@ -1,12 +1,13 @@
 use std::pin::Pin;
 
-use deno_core::error::ModuleLoaderError;
+use deno_error::JsErrorBox;
+use deno_core::ModuleLoadOptions;
+use deno_core::ModuleLoadReferrer;
 use deno_core::ModuleLoadResponse;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSource;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
-use deno_core::RequestedModuleType;
 
 pub struct ObscuraModuleLoader {
     pub base_url: String,
@@ -20,8 +21,8 @@ impl ObscuraModuleLoader {
     }
 }
 
-fn io_err(msg: String) -> ModuleLoaderError {
-    std::io::Error::new(std::io::ErrorKind::Other, msg).into()
+fn io_err(msg: String) -> JsErrorBox {
+    JsErrorBox::generic(msg)
 }
 
 impl ModuleLoader for ObscuraModuleLoader {
@@ -30,7 +31,7 @@ impl ModuleLoader for ObscuraModuleLoader {
         specifier: &str,
         referrer: &str,
         _kind: deno_core::ResolutionKind,
-    ) -> Result<ModuleSpecifier, ModuleLoaderError> {
+    ) -> Result<ModuleSpecifier, JsErrorBox> {
         let base = if referrer.is_empty()
             || referrer.starts_with('<')
             || referrer == "."
@@ -41,15 +42,14 @@ impl ModuleLoader for ObscuraModuleLoader {
             referrer
         };
 
-        deno_core::resolve_import(specifier, base).map_err(|e| e.into())
+        deno_core::resolve_import(specifier, base).map_err(JsErrorBox::from_err)
     }
 
     fn load(
         &self,
         module_specifier: &ModuleSpecifier,
-        _maybe_referrer: Option<&ModuleSpecifier>,
-        _is_dyn_import: bool,
-        _requested_module_type: RequestedModuleType,
+        _maybe_referrer: Option<&ModuleLoadReferrer>,
+        _options: ModuleLoadOptions,
     ) -> ModuleLoadResponse {
         let url = module_specifier.to_string();
 
