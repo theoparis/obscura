@@ -1717,7 +1717,7 @@ dependencies = [
 
 [[package]]
 name = "obscura-browser"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -1733,7 +1733,7 @@ dependencies = [
 
 [[package]]
 name = "obscura-cdp"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "futures-util",
@@ -1753,7 +1753,7 @@ dependencies = [
 
 [[package]]
 name = "obscura-cli"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "bssl-rustls-adapters",
@@ -1775,7 +1775,7 @@ dependencies = [
 
 [[package]]
 name = "obscura-dom"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "cssparser",
  "html5ever",
@@ -1789,7 +1789,7 @@ dependencies = [
 
 [[package]]
 name = "obscura-js"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "base64",
@@ -1809,7 +1809,7 @@ dependencies = [
 
 [[package]]
 name = "obscura-mcp"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "obscura-browser",
@@ -1823,7 +1823,7 @@ dependencies = [
 
 [[package]]
 name = "obscura-net"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "async-trait",
  "bssl-crypto",
