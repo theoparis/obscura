@@ -16,8 +16,9 @@ bssl-rustls-adapters = { workspace = true, optional = true }
 rustls = { workspace = true, optional = true }
 webpki-roots = { workspace = true, optional = true }
 bssl-crypto = { workspace = true, optional = true }
+bssl-sys = { workspace = true, optional = true }
 
 [features]
 native-tls = ["reqwest/native-tls"]
 rustls-tls = ["reqwest/rustls"]
-stealth = ["bssl-rustls-adapters", "rustls", "webpki-roots", "bssl-crypto"]
+stealth = ["bssl-rustls-adapters", "rustls", "webpki-roots", "bssl-crypto", "bssl-sys"]

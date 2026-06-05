@@ -1,6 +1,5 @@
 use std::pin::Pin;
 
-use deno_error::JsErrorBox;
 use deno_core::ModuleLoadOptions;
 use deno_core::ModuleLoadReferrer;
 use deno_core::ModuleLoadResponse;
@@ -8,6 +7,7 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSource;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
+use deno_error::JsErrorBox;
 
 pub struct ObscuraModuleLoader {
     pub base_url: String,

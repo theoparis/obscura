@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, OnceLock};
 
-use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine as _;
 use deno_core::op2;
 use deno_core::Extension;
 use deno_core::OpState;

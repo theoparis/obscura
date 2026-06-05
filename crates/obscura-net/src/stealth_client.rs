@@ -1,20 +1,18 @@
 use std::collections::HashMap;
-use std::error::Error;
 use std::sync::Arc;
-use std::time::Duration;
 
-use reqwest::{redirect::Policy, Client};
 use tokio::sync::RwLock;
 use url::Url;
 
 use crate::client::{ObscuraNetError, Response};
 use crate::cookies::CookieJar;
+#[cfg(feature = "stealth")]
+use crate::stealth_tls::BoringTlsConnector;
 
 pub const STEALTH_USER_AGENT: &str =
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36";
 
 pub struct StealthHttpClient {
-    client: Client,
     pub cookie_jar: Arc<CookieJar>,
     pub extra_headers: RwLock<HashMap<String, String>>,
     pub in_flight: Arc<std::sync::atomic::AtomicU32>,
@@ -27,61 +25,10 @@ impl StealthHttpClient {
 
     pub fn with_proxy(
         cookie_jar: Arc<CookieJar>,
-        proxy_url: Option<&str>,
-        ja3: Option<Ja3Fingerprint>,
+        _proxy_url: Option<&str>,
+        _ja3: Option<Ja3Fingerprint>,
     ) -> Self {
-        let mut builder = crate::create_client_builder()
-            .cookie_store(false)
-            .redirect(Policy::none())
-            .timeout(Duration::from_secs(30));
-
-        #[cfg(feature = "stealth")]
-        if let Some(ref f) = ja3 {
-            use bssl_rustls_adapters::CryptoProviderBuilder;
-
-            let mut builder_with_ciphers = CryptoProviderBuilder::new();
-            let mut has_custom_ciphers = false;
-
-            for &id in &f.cipher_suites {
-                if let Some(suite) = map_ja3_cipher(id) {
-                    builder_with_ciphers = builder_with_ciphers.with_cipher_suite(suite);
-                    has_custom_ciphers = true;
-                }
-            }
-
-            if has_custom_ciphers {
-                let provider = builder_with_ciphers
-                    .with_default_key_exchange_groups()
-                    .build();
-
-                let rustls_builder =
-                    rustls::ClientConfig::builder_with_provider(Arc::new(provider))
-                        .with_safe_default_protocol_versions()
-                        .expect("Failed to build rustls config");
-
-                let mut root_store = rustls::RootCertStore::empty();
-                root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-
-                let rustls_config = rustls_builder
-                    .with_root_certificates(root_store)
-                    .with_no_client_auth();
-
-                builder = builder.use_preconfigured_tls(rustls_config);
-            }
-        }
-
-        if let Some(proxy) = proxy_url {
-            if let Ok(p) = reqwest::Proxy::all(proxy) {
-                builder = builder.proxy(p);
-            }
-        }
-
-        let client = builder
-            .build()
-            .expect("failed to build reqwest stealth client");
-
         StealthHttpClient {
-            client,
             cookie_jar,
             extra_headers: RwLock::new(HashMap::new()),
             in_flight: Arc::new(std::sync::atomic::AtomicU32::new(0)),
@@ -93,78 +40,43 @@ impl StealthHttpClient {
         let mut redirects = Vec::new();
 
         for _ in 0..20 {
-            let mut req_builder = self.client.get(current_url.clone());
-
-            let cookie_header = self.cookie_jar.get_cookie_header(&current_url);
-            if !cookie_header.is_empty() {
-                req_builder = req_builder.header("Cookie", &cookie_header);
-            }
-
-            for (k, v) in self.extra_headers.read().await.iter() {
-                req_builder = req_builder.header(k.as_str(), v.as_str());
-            }
-
-            req_builder = req_builder.header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7");
-            req_builder = req_builder.header("Accept-Language", "en-US,en;q=0.9");
-            req_builder = req_builder.header(
-                "Sec-Ch-Ua",
-                "\"Chromium\";v=\"145\", \"Not;A=Brand\";v=\"24\", \"Google Chrome\";v=\"145\"",
-            );
-            req_builder = req_builder.header("Sec-Ch-Ua-Mobile", "?0");
-            req_builder = req_builder.header("Sec-Ch-Ua-Platform", "\"Linux\"");
-            req_builder = req_builder.header("Sec-Fetch-Dest", "document");
-            req_builder = req_builder.header("Sec-Fetch-Mode", "navigate");
-            req_builder = req_builder.header("Sec-Fetch-Site", "none");
-            req_builder = req_builder.header("Sec-Fetch-User", "?1");
-            req_builder = req_builder.header("Upgrade-Insecure-Requests", "1");
-
             self.in_flight
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             tracing::debug!("Sending stealth request to {}", current_url);
-            let resp = req_builder.send().await.map_err(|e| {
-                tracing::error!("Stealth request failed for {}: {}", current_url, e);
-                self.in_flight
-                    .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
-                ObscuraNetError::Network(format!(
-                    "{}: {} (source: {:?})",
-                    current_url,
-                    e,
-                    e.source()
-                ))
-            })?;
+
+            let result = self.fetch_single(&current_url).await;
+
             self.in_flight
                 .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+
+            let (status, response_headers, body) = match result {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::error!("Stealth request failed for {}: {}", current_url, e);
+                    return Err(e);
+                }
+            };
+
             tracing::debug!(
                 "Received response from {} with status {}",
                 current_url,
-                resp.status()
+                status
             );
 
-            let status = resp.status();
-
-            for val in resp.headers().get_all("set-cookie") {
-                if let Ok(s) = val.to_str() {
-                    self.cookie_jar.set_cookie(s, &current_url);
+            // Handle Set-Cookie headers
+            if let Some(cookies) = response_headers.get("set-cookie") {
+                for cookie_str in cookies.split('\n') {
+                    let cookie_str = cookie_str.trim();
+                    if !cookie_str.is_empty() {
+                        self.cookie_jar.set_cookie(cookie_str, &current_url);
+                    }
                 }
             }
 
-            let response_headers: HashMap<String, String> = resp
-                .headers()
-                .iter()
-                .map(|(k, v)| {
-                    (
-                        k.as_str().to_lowercase(),
-                        v.to_str().unwrap_or("").to_string(),
-                    )
-                })
-                .collect();
-
-            if status.is_redirection() {
-                if let Some(location) = resp.headers().get("location") {
-                    let location_str = location.to_str().map_err(|_| {
-                        ObscuraNetError::Network("Invalid redirect Location".into())
-                    })?;
-                    let next_url = current_url.join(location_str).map_err(|e| {
+            // Handle redirects
+            if status >= 300 && status < 400 {
+                if let Some(location) = response_headers.get("location") {
+                    let next_url = current_url.join(location).map_err(|e| {
                         ObscuraNetError::Network(format!("Invalid redirect URL: {}", e))
                     })?;
                     redirects.push(current_url.clone());
@@ -173,15 +85,9 @@ impl StealthHttpClient {
                 }
             }
 
-            let body = resp
-                .bytes()
-                .await
-                .map_err(|e| ObscuraNetError::Network(format!("Failed to read body: {}", e)))?
-                .to_vec();
-
             return Ok(Response {
                 url: current_url,
-                status: status.as_u16(),
+                status,
                 headers: response_headers,
                 body,
                 redirected_from: redirects,
@@ -189,6 +95,146 @@ impl StealthHttpClient {
         }
 
         Err(ObscuraNetError::TooManyRedirects(url.to_string()))
+    }
+
+    /// Perform a single HTTP GET request using native BoringSSL TLS.
+    #[cfg(feature = "stealth")]
+    async fn fetch_single(
+        &self,
+        url: &Url,
+    ) -> Result<(u16, HashMap<String, String>, Vec<u8>), ObscuraNetError> {
+        let host = url
+            .host_str()
+            .ok_or_else(|| ObscuraNetError::Network("No host in URL".into()))?;
+        let port = url
+            .port()
+            .unwrap_or(if url.scheme() == "https" { 443 } else { 80 });
+        let path = url.path();
+        let full_path = if let Some(q) = url.query() {
+            format!("{}?{}", if path.is_empty() { "/" } else { path }, q)
+        } else if path.is_empty() {
+            "/".to_string()
+        } else {
+            path.to_string()
+        };
+
+        // Connect TCP
+        let addr = format!("{}:{}", host, port);
+        let tcp = tokio::net::TcpStream::connect(&addr)
+            .await
+            .map_err(|e| ObscuraNetError::Network(format!("TCP connect to {}: {}", addr, e)))?;
+
+        // Perform BoringSSL-native TLS handshake
+        let connector = BoringTlsConnector::shared()
+            .map_err(|e| ObscuraNetError::Network(format!("TLS connector init: {}", e)))?;
+        tracing::debug!("TCP connected to {}, starting TLS", addr);
+        let mut tls = connector
+            .connect(tcp, host)
+            .await
+            .map_err(|e| ObscuraNetError::Network(format!("TLS connect: {}", e)))?;
+
+        // Build HTTP/1.1 request
+        let cookie_header = self.cookie_jar.get_cookie_header(url);
+        let extra = self.extra_headers.read().await;
+
+        let mut request = format!(
+            "GET {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: {}\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8\r\nAccept-Language: en-US,en;q=0.9\r\n",
+            full_path, host, STEALTH_USER_AGENT,
+        );
+
+        if !cookie_header.is_empty() {
+            request.push_str(&format!("Cookie: {}\r\n", cookie_header));
+        }
+
+        for (k, v) in extra.iter() {
+            request.push_str(&format!("{}: {}\r\n", k, v));
+        }
+        drop(extra);
+
+        request.push_str("Connection: close\r\n\r\n");
+
+        // Write request
+        tokio::io::AsyncWriteExt::write_all(&mut tls, request.as_bytes())
+            .await
+            .map_err(|e| ObscuraNetError::Network(format!("Write request: {}", e)))?;
+        tokio::io::AsyncWriteExt::flush(&mut tls)
+            .await
+            .map_err(|e| ObscuraNetError::Network(format!("Flush request: {}", e)))?;
+
+        // Read response
+        let mut buf = Vec::new();
+        let mut tmp = [0u8; 8192];
+        loop {
+            match tokio::io::AsyncReadExt::read(&mut tls, &mut tmp).await {
+                Ok(0) => break,
+                Ok(n) => buf.extend_from_slice(&tmp[..n]),
+                Err(e) => return Err(ObscuraNetError::Network(format!("Read response: {}", e))),
+            }
+        }
+
+        // Parse HTTP response
+        let (status, headers, body_start) = Self::parse_http_response(&buf)?;
+
+        let response_headers: HashMap<String, String> = headers
+            .into_iter()
+            .map(|(k, v)| (k.to_lowercase(), v))
+            .collect();
+
+        Ok((status, response_headers, buf[body_start..].to_vec()))
+    }
+
+    /// Fallback for non-stealth builds (shouldn't be used, but provides compilation)
+    #[cfg(not(feature = "stealth"))]
+    async fn fetch_single(
+        &self,
+        _url: &Url,
+    ) -> Result<(u16, HashMap<String, String>, Vec<u8>), ObscuraNetError> {
+        Err(ObscuraNetError::Network(
+            "Stealth HTTP client not available without stealth feature".into(),
+        ))
+    }
+
+    /// Parse a raw HTTP/1.1 response into status code, headers, and body start offset.
+    fn parse_http_response(
+        data: &[u8],
+    ) -> Result<(u16, Vec<(String, String)>, usize), ObscuraNetError> {
+        // Find end of headers (\r\n\r\n)
+        let header_end = data
+            .windows(4)
+            .position(|w| w == b"\r\n\r\n")
+            .ok_or_else(|| {
+                ObscuraNetError::Network("Invalid HTTP response: no header terminator".into())
+            })?;
+
+        let header_bytes = &data[..header_end];
+        let header_str = String::from_utf8_lossy(header_bytes);
+        let mut lines = header_str.lines();
+
+        // Parse status line
+        let status_line = lines
+            .next()
+            .ok_or_else(|| ObscuraNetError::Network("Empty HTTP response".into()))?;
+        let parts: Vec<&str> = status_line.splitn(3, ' ').collect();
+        if parts.len() < 2 {
+            return Err(ObscuraNetError::Network(format!(
+                "Invalid status line: {}",
+                status_line
+            )));
+        }
+        let status: u16 = parts[1]
+            .parse()
+            .map_err(|_| ObscuraNetError::Network(format!("Invalid status code: {}", parts[1])))?;
+
+        // Parse headers
+        let mut headers = Vec::new();
+        for line in lines {
+            if let Some((k, v)) = line.split_once(':') {
+                headers.push((k.to_string(), v.trim().to_string()));
+            }
+        }
+
+        let body_start = header_end + 4; // Skip \r\n\r\n
+        Ok((status, headers, body_start))
     }
 
     pub async fn set_extra_headers(&self, headers: HashMap<String, String>) {
@@ -201,43 +247,6 @@ impl StealthHttpClient {
 
     pub fn is_network_idle(&self) -> bool {
         self.active_requests() == 0
-    }
-}
-
-#[cfg(feature = "stealth")]
-fn map_ja3_cipher(id: u16) -> Option<rustls::SupportedCipherSuite> {
-    use bssl_rustls_adapters::cipher_suites as bssl_suites;
-
-    // Manual mapping for common JA3 ciphers to BoringSSL supported suites
-    match id {
-        0x1301 => Some(rustls::SupportedCipherSuite::Tls13(
-            &bssl_suites::TLS13_AES_128_GCM_SHA256,
-        )),
-        0x1302 => Some(rustls::SupportedCipherSuite::Tls13(
-            &bssl_suites::TLS13_AES_256_GCM_SHA384,
-        )),
-        0x1303 => Some(rustls::SupportedCipherSuite::Tls13(
-            &bssl_suites::TLS13_CHACHA20_POLY1305_SHA256,
-        )),
-        0xc02b => Some(rustls::SupportedCipherSuite::Tls12(
-            &bssl_suites::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-        )),
-        0xc02c => Some(rustls::SupportedCipherSuite::Tls12(
-            &bssl_suites::TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-        )),
-        0xc02f => Some(rustls::SupportedCipherSuite::Tls12(
-            &bssl_suites::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-        )),
-        0xc030 => Some(rustls::SupportedCipherSuite::Tls12(
-            &bssl_suites::TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-        )),
-        0xcca8 => Some(rustls::SupportedCipherSuite::Tls12(
-            &bssl_suites::TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
-        )),
-        0xcca9 => Some(rustls::SupportedCipherSuite::Tls12(
-            &bssl_suites::TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
-        )),
-        _ => None,
     }
 }
 

@@ -5,6 +5,8 @@ pub mod interceptor;
 pub mod robots;
 #[cfg(feature = "stealth")]
 pub mod stealth_client;
+#[cfg(feature = "stealth")]
+pub mod stealth_tls;
 
 pub use blocklist::is_blocked as is_tracker_blocked;
 pub use client::{ObscuraHttpClient, ObscuraNetError, RequestInfo, ResourceType, Response};
